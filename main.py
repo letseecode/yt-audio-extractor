@@ -1,4 +1,5 @@
 import os
+import glob
 import tempfile
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -19,15 +20,19 @@ class ExtractRequest(BaseModel):
 
 @app.post("/extract")
 def extract_audio(request: ExtractRequest):
-    output_path = os.path.join(tempfile.gettempdir(), "audio.m4a")
+    temp_dir = tempfile.gettempdir()
+    output_template = os.path.join(temp_dir, "audio.%(ext)s")
+
+    for f in glob.glob(os.path.join(temp_dir, "audio.*")):
+        os.remove(f)
 
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "format": "bestaudio/best",
         "quiet": True,
         "no_warnings": True,
         "cookiefile": "cookies.txt",
         "remote_components": ["ejs:github"],
-        "outtmpl": output_path,
+        "outtmpl": output_template,
     }
 
     try:
@@ -35,16 +40,21 @@ def extract_audio(request: ExtractRequest):
             info = ydl.extract_info(request.url, download=True)
             title = info.get("title", "Unknown title")
 
-        # yt-dlp may adjust the extension depending on the actual format downloaded
-        actual_path = ydl.prepare_filename(info)
+        matches = glob.glob(os.path.join(temp_dir, "audio.*"))
+        if not matches:
+            raise HTTPException(status_code=500, detail="Downloaded file not found on disk.")
+
+        actual_path = matches[0]
 
         return FileResponse(
             actual_path,
-            media_type="audio/m4a",
-            filename="audio.m4a",
+            media_type="audio/mp4",
+            filename="audio" + os.path.splitext(actual_path)[1],
             headers={"X-Video-Title": title},
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
