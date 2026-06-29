@@ -18,6 +18,36 @@ class ExtractRequest(BaseModel):
     url: str
 
 
+@app.post("/formats")
+def list_formats(request: ExtractRequest):
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "cookiefile": "cookies.txt",
+        "remote_components": ["ejs:github"],
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(request.url, download=False)
+
+        formats = [
+            {
+                "format_id": f.get("format_id"),
+                "ext": f.get("ext"),
+                "acodec": f.get("acodec"),
+                "vcodec": f.get("vcodec"),
+                "abr": f.get("abr"),
+            }
+            for f in info.get("formats", [])
+        ]
+
+        return {"formats": formats}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/extract")
 def extract_audio(request: ExtractRequest):
     temp_dir = tempfile.gettempdir()
